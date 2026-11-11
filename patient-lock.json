@@ -1,0 +1,10 @@
+{
+  "id": "workshop-patient-lock",
+  "name": "Patient Lock",
+  "language": "Cadence DSL",
+  "protocol": 2,
+  "supportedModes": ["2d"],
+  "supportedRulesets": ["classic"],
+  "resourceModes": ["open", "dsl"],
+  "command": ["node", "src/dsl/runner.js", "cadence", "bots/dsl/cadence/patient-lock.cadence"]
+}

@@ -1,0 +1,47 @@
+bot First Cadence
+modes 2d 3d
+initial search
+
+state search
+  each status-text "SEARCH"
+  each status-value tick
+  each drive 0.7
+  each turn 0.25
+  each scan-heading sweep(8)
+  each scan-pitch wave(30, 22)
+  each scan-arc 58
+  when storm-distance < 80 -> storm
+  when contact -> attack
+  when cue-present -> listen
+end
+
+# A cue says roughly where a robot is: head that way and sweep across it.
+state listen
+  each drive 0.7
+  each turn clamp(angle(cue-bearing, heading) / 45, -1, 1)
+  each scan-heading cue-bearing + wave(12, cue-error + 10)
+  each scan-arc 30
+  when storm-distance < 80 -> storm
+  when contact -> attack
+  when not cue-present -> search
+end
+
+# Leave the storm straight away from its centre, then go back to searching.
+state storm
+  each drive 1
+  each turn clamp(angle(storm-bearing + 180, heading) / 30, -1, 1)
+  each scan-heading sweep(8)
+  when storm-distance > 120 -> search
+end
+
+state attack
+  each status-text "TRACK"
+  each status-value range
+  each aim-heading bearing
+  each aim-pitch elevation
+  each scan-heading bearing
+  each scan-pitch elevation
+  each fire cooldown == 0 and abs(aim-error) < 3 and energy >= fire-base + fire-per-power + 5
+  when storm-distance < 80 -> storm
+  when not contact for 8 -> search
+end

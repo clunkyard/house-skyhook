@@ -1,0 +1,300 @@
+# Skyhook patrols, locks on and circles its target at middle range while
+# making controlled attack passes, and after seven seconds of lock (or when
+# crowded) takes a slower break without shooting to recover its battery.
+# On patrol it bends towards a passive cue. Chase it while it breaks away.
+bot Skyhook
+modes 2d 3d
+rulesets classic inertial-2d gravity-flat gravity-hills zero-g
+initial patrol
+
+state patrol
+  enter set lb bearing
+  enter set le 0
+  enter set lt -9
+  enter set lr 300
+  enter set s 1
+  enter set nf 0
+  enter set wall-ready 0
+  enter set d 0
+  enter set side 1
+  each set cx width / 2 - x
+  each set cy height / 2 - y
+  each set d 0.62 - 0.3 * (energy-fraction < 0.3)
+  each drive d
+  each turn cue-present * clamp(angle(cue-bearing, heading) / 45, -1, 1) + (not cue-present) * (clamp((cos(heading) * cy - sin(heading) * cx) / 80, -1, 1) * 0.7 - 0.22)
+  each pitch clamp((wave(47, 12) - pitch) / 20, -1, 1)
+  each set lb contact * bearing + (not contact) * lb
+  each set le contact * elevation + (not contact) * le
+  each set lr contact * range + (not contact) * lr
+  each set lt contact * tick + (not contact) * lt
+  each scan-heading contact * bearing + (not contact) * (scan-heading - 22)
+  each scan-pitch mode3 * (contact * elevation + (not contact) * wave(37, 30))
+  each scan-arc 24
+  when physics-mode -> force-patrol
+  when zone-active and zone-distance > zone-radius * 0.75 -> home
+  when storm-distance < 80 -> storm
+  when contact -> lock
+end
+
+state lock
+  enter set side 1 - 2 * (angle(heading, bearing) < 0)
+  # Lead from the change in bearing and elevation between echoes (degrees
+  # a tick, 20 ticks a second). Hold the last echo for a few ticks when
+  # the lock slips. Classic shots do not carry the shooter's speed, so add
+  # back our own crossing speed: full drive is 95 a second, and
+  # 95 * 57.3 = 5443 turns it into degrees.
+  each set ok contact and tick - lt <= 2 and abs(angle(bearing, lb)) < 10
+  each set w ok * angle(bearing, lb) / max(1, tick - lt)
+  each set we ok * (elevation - le) / max(1, tick - lt)
+  each set tb contact * bearing + (not contact) * lb
+  each set te contact * elevation + (not contact) * le
+  each set tr contact * range + (not contact) * lr
+  each set pw clamp((shot-speed-base - tr / 1.1) / (0 - shot-speed-per-power), power-min, power-max)
+  each set sp shot-speed-base + shot-speed-per-power * pw
+  each set sol tb + clamp((w * 20 * tr + 5443 * d * sin(heading - tb)) / sp, -30, 30)
+  each set sole te + clamp(we * 20 * tr / sp, -20, 20)
+  each set lb tb
+  each set le te
+  each set lr tr
+  each set lt contact * tick + (not contact) * lt
+  each aim-heading sol
+  each aim-pitch sole
+  each scan-heading tb + w
+  each scan-pitch te + we
+  each scan-arc 20 + 20 * (not contact)
+  each power pw
+  each fire contact and cooldown == 0 and range < 700 and abs(angle(sol, aim)) < 2.5 and abs(sole - aim-pitch) < 2.5 and energy >= fire-base + fire-per-power * pw + 6
+  # Circle at about 320. Ramp the drive through each reversal instead of
+  # snapping between forward and reverse; allow a wall escape to take hold.
+  each set px x + cos(heading) * s * 70
+  each set py y + sin(heading) * s * 70
+  each set flip tick >= nf or (tick >= wall-ready and (px < 40 or px > width - 40 or py < 40 or py > height - 40))
+  each set s s * (1 - 2 * flip)
+  each set wall-ready flip * (tick + 20) + (1 - flip) * wall-ready
+  each set nf flip * (tick + 12 + (tick * 37) % 17) + (1 - flip) * nf
+  each set d d + clamp(s * (0.72 - 0.25 * mode3 - 0.35 * (energy-fraction < 0.3)) - d, -0.08, 0.08)
+  each drive d
+  each turn clamp(angle(tb + side * (90 - s * clamp((tr - 320) / 4, -35, 35)), heading) / 20, -1, 1)
+  each pitch clamp((te * 0.5 - pitch) / 20, -1, 1)
+  when zone-active and zone-distance > zone-radius * 0.75 -> home
+  when storm-distance < 80 -> storm
+  when contact and range < 170 -> break
+  when not contact for 8 -> patrol
+  after 140 -> break
+end
+
+state break
+  each set cx width / 2 - x
+  each set cy height / 2 - y
+  each set edge x < 110 or x > width - 110 or y < 110 or y > height - 110
+  # A break should replenish the shared battery, not spend it on a sprint.
+  each set d -0.5 + 0.2 * (energy-fraction < 0.3)
+  each drive d
+  each turn edge * clamp((cos(heading) * cy - sin(heading) * cx) / -40, -1, 1) + (not edge) * 0.7 * side
+  each pitch clamp((0 - pitch) / 20, -1, 1)
+  each set lb bearing
+  each set le elevation
+  each set lt tick
+  each scan-heading scan-heading + 36
+  each scan-pitch mode3 * wave(17, 30)
+  each scan-arc 40
+  when zone-active and zone-distance > zone-radius * 0.75 -> home
+  when storm-distance < 80 -> storm
+  after 34 -> patrol
+end
+
+state storm
+  # Out across the storm's path, on the side away from its centre: square
+  # to its heading, leaning a third of the way to straight out.
+  each set ea storm-bearing + 180
+  each set ep storm-heading + 90 * clamp(angle(ea, storm-heading) * 100, -1, 1)
+  each set esc ep + angle(ea, ep) / 3
+  each turn clamp(angle(esc, heading) / 20, -1, 1)
+  each pitch clamp((0 - pitch) / 20, -1, 1)
+  each set d 1
+  each drive d
+  each aim-heading bearing
+  each aim-pitch elevation
+  each scan-heading bearing * contact + (scan-heading + 36) * (not contact)
+  each scan-pitch elevation * contact
+  each scan-arc 40 - 20 * contact
+  each set pw clamp((shot-speed-base - range) / (0 - shot-speed-per-power), power-min, power-max)
+  each power pw
+  each fire contact and cooldown == 0 and abs(aim-error) < 3 and energy >= fire-base + fire-per-power * pw + 4
+  when zone-active and zone-distance > zone-radius * 0.75 -> home
+  when storm-distance > 120 -> patrol
+end
+
+state home
+  each turn clamp(angle(zone-bearing, heading) / 20, -1, 1)
+  each pitch clamp((zone-elevation - pitch) / 20, -1, 1)
+  each set d clamp((zone-distance - zone-radius * 0.4) / 60, 0.2, 0.8)
+  each drive d
+  each aim-heading bearing
+  each aim-pitch elevation
+  each scan-heading bearing * contact + (scan-heading + 36) * (not contact)
+  each scan-pitch elevation * contact
+  each scan-arc 40 - 20 * contact
+  each set pw clamp((shot-speed-base - range) / (0 - shot-speed-per-power), power-min, power-max)
+  each power pw
+  each fire contact and cooldown == 0 and abs(aim-error) < 3 and energy >= fire-base + fire-per-power * pw + 4
+  when zone-distance < zone-radius * 0.4 -> patrol
+end
+
+# The force rulesets push the hull with thrust, strafe and lift.
+state force-patrol
+  each set g 0 - gravity-z
+  each set dx clamp((width / 2 - x) * 0.3, -60, 60) + 45 * cos(tick * 4)
+  each set dy clamp((height / 2 - y) * 0.3, -60, 60) + 45 * sin(tick * 4)
+  each set dx dx * (not cue-present) + cue-present * cos(cue-bearing) * 60
+  each set dy dy * (not cue-present) + cue-present * sin(cue-bearing) * 60
+  each set dz mode3 * ((not gravity) * clamp((depth / 2 - z) * 0.3, -40, 40) + gravity * clamp((terrain-height + 115 - z) * 1.2, -35, 35))
+  each thrust clamp(((dx - vx) * forward-x + (dy - vy) * forward-y + (dz - vz) * forward-z) / 50, -1, 1)
+  each strafe clamp(((dx - vx) * right-x + (dy - vy) * right-y + (dz - vz) * right-z) / 50, -1, 1)
+  each lift mode3 * clamp(((dx - vx) * up-x + (dy - vy) * up-y + (dz - vz) * up-z) / 50 + g / 100, -1, 1)
+  each yaw-torque clamp(-0.3 - yaw-rate / 60, -1, 1)
+  each pitch-torque mode3 * clamp(0 - pitch / 40 - pitch-rate / 60, -1, 1)
+  each roll-torque mode3 * clamp(0 - roll-rate / 60, -1, 1)
+  each set lb contact * bearing + (not contact) * lb
+  each set le contact * elevation + (not contact) * le
+  each set lr contact * range + (not contact) * lr
+  each set lt contact * tick + (not contact) * lt
+  each scan-heading contact * bearing + (not contact) * (scan-heading - 22)
+  each scan-pitch mode3 * (contact * elevation + (not contact) * wave(19, 35))
+  each scan-arc 24
+  when zone-active and zone-distance > zone-radius * 0.75 -> force-home
+  when storm-distance < 80 -> force-storm
+  when contact -> force-lock
+end
+
+state force-lock
+  # Shots carry our own velocity here, so the relative bearing change is
+  # the whole lead. Gravity drops a shot by g t^2 / 2 over its flight time
+  # t = range / speed; 28.65 = 57.3 / 2 turns that into degrees.
+  each set g 0 - gravity-z
+  each set ok contact and tick - lt <= 2 and abs(angle(bearing, lb)) < 10
+  each set w ok * angle(bearing, lb) / max(1, tick - lt)
+  each set we ok * (elevation - le) / max(1, tick - lt)
+  each set tb contact * bearing + (not contact) * lb
+  each set te contact * elevation + (not contact) * le
+  each set tr contact * range + (not contact) * lr
+  each set pw clamp((shot-speed-base - tr / 1.1) / (0 - shot-speed-per-power), power-min, power-max)
+  each set sp shot-speed-base + shot-speed-per-power * pw
+  each set sol tb + clamp(w * 20 * tr / sp, -30, 30)
+  each set sole te + clamp(we * 20 * tr / sp, -20, 20) + 28.65 * g * tr / (sp * sp)
+  each set lb tb
+  each set le te
+  each set lr tr
+  each set lt contact * tick + (not contact) * lt
+  each aim-heading sol
+  each aim-pitch sole
+  each scan-heading tb + w
+  each scan-pitch te + we
+  each scan-arc 20 + 20 * (not contact)
+  each power pw
+  each fire contact and cooldown == 0 and range < 700 and abs(angle(sol, aim)) < 2.5 and abs(sole - aim-pitch) < 2.5 and energy >= fire-base + fire-per-power * pw + 6
+  # The desired velocity: across the line of sight with reversals, in or
+  # out to hold 320, slower on a low battery, clear of the walls, and to
+  # the safe zone in sudden death. Thrust, strafe and lift then push the
+  # hull towards it; lift also holds the hover against gravity.
+  each set flip tick >= nf
+  each set s s * (1 - 2 * flip)
+  each set nf flip * (tick + 12 + (tick * 37) % 17) + (1 - flip) * nf
+  each set vl 85 * clamp(energy-fraction * 2 - 0.2, 0.25, 1)
+  each set rr clamp((tr - 320) * 0.65, -70, 70) * clamp(energy-fraction * 2, 0.3, 1)
+  each set ce cos(te)
+  each set dx (0 - sin(tb)) * s * vl + ce * cos(tb) * rr
+  each set dy cos(tb) * s * vl + ce * sin(tb) * rr
+  each set dz mode3 * ((not gravity) * sin(te) * rr + gravity * clamp((terrain-height + 115 - z) * 1.2, -35, 35))
+  each set dx min(max(dx, (80 - x) * 1.5), (width - 80 - x) * 1.5)
+  each set dy min(max(dy, (80 - y) * 1.5), (height - 80 - y) * 1.5)
+  each set dz mode3 * min(max(dz, (80 - z) * 1.5), (depth - 80 - z) * 1.5)
+  each thrust clamp(((dx - vx) * forward-x + (dy - vy) * forward-y + (dz - vz) * forward-z) / 50, -1, 1)
+  each strafe clamp(((dx - vx) * right-x + (dy - vy) * right-y + (dz - vz) * right-z) / 50, -1, 1)
+  each lift mode3 * clamp(((dx - vx) * up-x + (dy - vy) * up-y + (dz - vz) * up-z) / 50 + g / 100, -1, 1)
+  each yaw-torque clamp(angle(tb, heading) / 70 - yaw-rate / 60, -1, 1)
+  each pitch-torque mode3 * clamp(0 - pitch / 40 - pitch-rate / 60, -1, 1)
+  each roll-torque mode3 * clamp(0 - roll-rate / 60, -1, 1)
+  when zone-active and zone-distance > zone-radius * 0.75 -> force-home
+  when storm-distance < 80 -> force-storm
+  when contact and range < 150 -> force-break
+  when not contact for 8 -> force-patrol
+  after 140 -> force-break
+end
+
+state force-break
+  enter set bx 0 - cos(tb) * 80
+  enter set by 0 - sin(tb) * 80
+  each set g 0 - gravity-z
+  each set dx min(max(bx, (80 - x) * 1.5), (width - 80 - x) * 1.5)
+  each set dy min(max(by, (80 - y) * 1.5), (height - 80 - y) * 1.5)
+  each set dz mode3 * ((not gravity) * clamp((depth / 2 - z) * 0.3, -40, 40) + gravity * clamp((terrain-height + 115 - z) * 1.2, -35, 35))
+  each set lb bearing
+  each set le elevation
+  each set lt tick
+  each thrust clamp(((dx - vx) * forward-x + (dy - vy) * forward-y + (dz - vz) * forward-z) / 50, -1, 1)
+  each strafe clamp(((dx - vx) * right-x + (dy - vy) * right-y + (dz - vz) * right-z) / 50, -1, 1)
+  each lift mode3 * clamp(((dx - vx) * up-x + (dy - vy) * up-y + (dz - vz) * up-z) / 50 + g / 100, -1, 1)
+  each yaw-torque clamp(0.4 - yaw-rate / 60, -1, 1)
+  each pitch-torque mode3 * clamp(0 - pitch / 40 - pitch-rate / 60, -1, 1)
+  each roll-torque mode3 * clamp(0 - roll-rate / 60, -1, 1)
+  each scan-heading scan-heading + 36
+  each scan-pitch mode3 * wave(17, 35)
+  each scan-arc 40
+  when zone-active and zone-distance > zone-radius * 0.75 -> force-home
+  when storm-distance < 80 -> force-storm
+  after 34 -> force-patrol
+end
+
+# The storm and sudden death under forces: fly the escape heading, or to the
+# middle of the safe zone, still shooting at what it sees.
+state force-storm
+  each set g 0 - gravity-z
+  # Out across the storm's path, on the side away from its centre: square
+  # to its heading, leaning a third of the way to straight out.
+  each set ea storm-bearing + 180
+  each set ep storm-heading + 90 * clamp(angle(ea, storm-heading) * 100, -1, 1)
+  each set esc ep + angle(ea, ep) / 3
+  each set dx cos(esc) * 80
+  each set dy sin(esc) * 80
+  each set dz mode3 * gravity * clamp((terrain-height + 115 - z) * 1.2, -35, 35)
+  each thrust clamp(((dx - vx) * forward-x + (dy - vy) * forward-y + (dz - vz) * forward-z) / 50, -1, 1)
+  each strafe clamp(((dx - vx) * right-x + (dy - vy) * right-y + (dz - vz) * right-z) / 50, -1, 1)
+  each lift mode3 * clamp(((dx - vx) * up-x + (dy - vy) * up-y + (dz - vz) * up-z) / 50 + g / 100, -1, 1)
+  each yaw-torque clamp(angle(esc, heading) / 70 - yaw-rate / 60, -1, 1)
+  each pitch-torque mode3 * clamp(0 - pitch / 40 - pitch-rate / 60, -1, 1)
+  each roll-torque mode3 * clamp(0 - roll-rate / 60, -1, 1)
+  each aim-heading bearing
+  each aim-pitch elevation
+  each scan-heading bearing * contact + (scan-heading + 36) * (not contact)
+  each scan-pitch elevation * contact
+  each scan-arc 40 - 20 * contact
+  each set pw clamp((shot-speed-base - range) / (0 - shot-speed-per-power), power-min, power-max)
+  each power pw
+  each fire contact and cooldown == 0 and abs(aim-error) < 3 and energy >= fire-base + fire-per-power * pw + 4
+  when zone-active and zone-distance > zone-radius * 0.75 -> force-home
+  when storm-distance > 120 -> force-patrol
+end
+
+state force-home
+  each set g 0 - gravity-z
+  each set zs clamp(zone-distance - zone-radius * 0.4, 10, 80)
+  each set dx cos(zone-bearing) * cos(zone-elevation) * zs
+  each set dy sin(zone-bearing) * cos(zone-elevation) * zs
+  each set dz mode3 * ((not gravity) * sin(zone-elevation) * zs + gravity * clamp((terrain-height + 115 - z) * 1.2, -35, 35))
+  each thrust clamp(((dx - vx) * forward-x + (dy - vy) * forward-y + (dz - vz) * forward-z) / 50, -1, 1)
+  each strafe clamp(((dx - vx) * right-x + (dy - vy) * right-y + (dz - vz) * right-z) / 50, -1, 1)
+  each lift mode3 * clamp(((dx - vx) * up-x + (dy - vy) * up-y + (dz - vz) * up-z) / 50 + g / 100, -1, 1)
+  each yaw-torque clamp(angle(zone-bearing, heading) / 70 - yaw-rate / 60, -1, 1)
+  each pitch-torque mode3 * clamp(0 - pitch / 40 - pitch-rate / 60, -1, 1)
+  each roll-torque mode3 * clamp(0 - roll-rate / 60, -1, 1)
+  each aim-heading bearing
+  each aim-pitch elevation
+  each scan-heading bearing * contact + (scan-heading + 36) * (not contact)
+  each scan-pitch elevation * contact
+  each scan-arc 40 - 20 * contact
+  each set pw clamp((shot-speed-base - range) / (0 - shot-speed-per-power), power-min, power-max)
+  each power pw
+  each fire contact and cooldown == 0 and abs(aim-error) < 3 and energy >= fire-base + fire-per-power * pw + 4
+  when zone-distance < zone-radius * 0.4 -> force-patrol
+end

@@ -1,0 +1,42 @@
+# Classic 2D workshop: confirm a lock, commit to an orbit side, tolerate
+# brief lost echoes and recover battery before starting another attack.
+bot Patient Lock
+modes 2d
+rulesets classic
+initial search
+
+state search
+  enter set last-bearing heading
+  each set last-bearing contact * bearing + (not contact) * last-bearing
+  each drive 0.4
+  each turn 0.2
+  each scan-heading contact * bearing + (not contact) * (scan-heading + 36)
+  each scan-arc 40
+  when battery < 18 -> recover
+  when contact for 2 -> attack
+end
+
+state attack
+  # Choose a side once, rather than reverse it whenever the hull turns.
+  enter set side 1 - 2 * (angle(heading, bearing) < 0)
+  each set last-bearing contact * bearing + (not contact) * last-bearing
+  each drive 0.45
+  each turn clamp(angle(last-bearing + side * 90, heading) / 45, -1, 1)
+  each aim-heading last-bearing
+  each scan-heading last-bearing
+  each scan-arc 20 + 20 * (not contact)
+  each power 1
+  each fire contact and cooldown == 0 and abs(aim-error) < 3 and battery >= 20
+  when battery < 18 -> recover
+  when not contact for 6 -> search
+  after 100 -> recover
+end
+
+state recover
+  each drive 0.15
+  each turn 0.12
+  each scan-heading scan-heading + 36
+  each scan-arc 40
+  # Different entry/exit thresholds avoid thrashing between states.
+  when battery > 35 for 4 -> search
+end

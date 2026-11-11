@@ -1,0 +1,29 @@
+{
+  "name": "Skyhook",
+  "language": "cadence",
+  "protocol": 2,
+  "strategy": "Patrols, locks on and circles at middle range, easing through Classic reversals and committing to wall escapes. Its timed Classic break slows down and stops firing to recover battery. Chase it during the break.",
+  "entry": "skyhook.cadence",
+  "supportedModes": [
+    "2d",
+    "3d"
+  ],
+  "resourceModes": [
+    "open",
+    "dsl"
+  ],
+  "supportedRulesets": [
+    "classic",
+    "inertial-2d",
+    "gravity-flat",
+    "gravity-hills",
+    "zero-g"
+  ],
+  "command": [
+    "node",
+    "src/dsl/runner.js",
+    "cadence",
+    "bots/dsl/cadence/skyhook.cadence"
+  ],
+  "publicDescription": "Patrols, locks on and circles at middle range, then takes a timed break without firing. In Classic it eases through reversals and slows down during the break to recover battery. Chase it while it breaks away."
+}
