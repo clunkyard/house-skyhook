@@ -3,7 +3,7 @@
   "repository": "clunkyard/house-skyhook",
   "source": {
     "botId": "8ba11543-0c55-4ba5-bcfa-d7dfa98ebbab",
-    "revisionId": "12ec0515-861a-44c3-b1e2-f9b8e2733f3e",
+    "revisionId": "a4893e89-cc53-451b-af16-c22c8edffe88",
     "manifestHash": "029b8dc8863016f10737678f21d33e28d976a3c4611df52e7d72e8919e0fec12"
   },
   "visibleManifestHash": "029b8dc8863016f10737678f21d33e28d976a3c4611df52e7d72e8919e0fec12",
@@ -56,7 +56,7 @@
   "managed": [
     {
       "path": ".clunkyard-source.json",
-      "sha256": "67f51f13d893e134a16638fc18935b566c2f7044654fcb7a742360766627cc1d",
+      "sha256": "e019dd8361cf33fe38f77ab3baf0030bb4eff32c7003a9d053d66a68dff33516",
       "mode": 420
     },
     {
