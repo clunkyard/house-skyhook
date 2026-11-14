@@ -1,6 +1,6 @@
 {
   "name": "Skyhook",
-  "language": "cadence",
+  "language": "Cadence DSL",
   "protocol": 2,
   "strategy": "Patrols, locks on and circles at middle range, easing through Classic reversals and committing to wall escapes. Its timed Classic break slows down and stops firing to recover battery. Chase it during the break.",
   "entry": "skyhook.cadence",
